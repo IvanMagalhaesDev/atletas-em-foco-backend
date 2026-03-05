@@ -4,9 +4,7 @@ from datetime import datetime
 
 class ClienteBase(BaseModel):
     nome: str
-    cpf: str
-    whatsapp: str
-    data_nascimento: Optional[str] = None
+    telefone: str
     dia_vencimento: Optional[int] = None
     ativo: bool = True
 
