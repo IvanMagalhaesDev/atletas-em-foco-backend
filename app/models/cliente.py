@@ -8,6 +8,7 @@ class Cliente(Base):
     id             = Column(Integer, primary_key=True, index=True)
     nome           = Column(String, nullable=False)
     telefone       = Column(String, nullable=False)
+    telegram_id = Column(String, nullable=True)
     dia_vencimento = Column(Integer, nullable=True)
     ativo          = Column(Boolean, default=True)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())

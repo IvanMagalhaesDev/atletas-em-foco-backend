@@ -11,10 +11,7 @@ router = APIRouter(prefix="/clientes", tags=["Clientes"])
 def listar_clientes(busca: str = "", db: Session = Depends(get_db)):
     query = db.query(Cliente)
     if busca:
-        query = query.filter(
-            Cliente.nome.ilike(f"%{busca}%") |
-            Cliente.cpf.ilike(f"%{busca}%")
-        )
+        query = query.filter(Cliente.nome.ilike(f"%{busca}%"))
     return query.all()
 
 @router.get("/{id}", response_model=ClienteResponse)
@@ -26,9 +23,6 @@ def buscar_cliente(id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=ClienteResponse)
 def criar_cliente(dados: ClienteCreate, db: Session = Depends(get_db)):
-    cpf_existe = db.query(Cliente).filter(Cliente.cpf == dados.cpf).first()
-    if cpf_existe:
-        raise HTTPException(status_code=400, detail="CPF já cadastrado")
     cliente = Cliente(**dados.model_dump())
     db.add(cliente)
     db.commit()

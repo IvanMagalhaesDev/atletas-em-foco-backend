@@ -5,6 +5,7 @@ from datetime import datetime
 class ClienteBase(BaseModel):
     nome: str
     telefone: str
+    telegram_id: Optional[str] = None
     dia_vencimento: Optional[int] = None
     ativo: bool = True
 
