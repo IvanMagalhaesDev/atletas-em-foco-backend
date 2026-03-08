@@ -25,3 +25,28 @@ def resumo_dashboard(db: Session = Depends(get_db)):
         "atrasados": atrasados,
         "receita":   total_receita
     }
+
+@router.get("/grafico")
+def grafico_dashboard(db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    
+    resultado = db.query(
+        Mensalidade.mes_referencia,
+        func.count(Mensalidade.id).label("total"),
+        func.sum(Mensalidade.valor).label("receita")
+    ).filter(
+        Mensalidade.status == "pago"
+    ).group_by(
+        Mensalidade.mes_referencia
+    ).order_by(
+        Mensalidade.mes_referencia
+    ).all()
+
+    return [
+        {
+            "mes": r.mes_referencia,
+            "total": r.total,
+            "receita": float(r.receita or 0)
+        }
+        for r in resultado
+    ]
