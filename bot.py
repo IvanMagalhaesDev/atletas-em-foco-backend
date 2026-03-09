@@ -19,9 +19,6 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ================================
-# COMANDO /start
-# ================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Olá! Bem-vindo ao *Atleta em Foco*!\n\n"
@@ -32,9 +29,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# ================================
-# COMANDO /status
-# ================================
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = str(update.effective_user.id)
     db = SessionLocal()
@@ -68,9 +62,6 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-# ================================
-# RECEBER COMPROVANTE (FOTO)
-# ================================
 async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = str(update.effective_user.id)
     db = SessionLocal()
@@ -93,31 +84,63 @@ async def receber_comprovante(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("✅ Você não tem mensalidades pendentes!")
             return
 
-        await update.message.reply_text(
-            "📨 Comprovante recebido! Aguarde a confirmação do administrador."
-        )
+        await update.message.reply_text("🔍 Analisando comprovante com IA, aguarde...")
 
         photo = update.message.photo[-1]
-        await context.bot.send_photo(
-            chat_id=ADMIN_ID,
-            photo=photo.file_id,
-            caption=(
-                f"📋 *Comprovante recebido!*\n\n"
-                f"👤 Cliente: {cliente.nome}\n"
-                f"📅 Vencimento: {mensalidade.data_vencimento}\n"
-                f"💰 Valor: R${mensalidade.valor:.0f}\n"
-                f"🔑 ID Mensalidade: {mensalidade.id}\n\n"
-                f"Para aprovar: `/aprovar {mensalidade.id}`\n"
-                f"Para rejeitar: `/rejeitar {mensalidade.id}`"
-            ),
-            parse_mode='Markdown'
-        )
+        file = await context.bot.get_file(photo.file_id)
+        image_bytes = await file.download_as_bytearray()
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+        aprovado = await validar_comprovante_ia(image_base64, mensalidade.valor)
+
+        if aprovado:
+            mensalidade.status = 'pago'
+            mensalidade.validado_por = 'auto'
+            mensalidade.data_pagamento = date.today().strftime("%d/%m/%Y")
+            db.commit()
+
+            await update.message.reply_text(
+                f"✅ *Pagamento confirmado automaticamente!*\n\n"
+                f"Olá {cliente.nome}!\n"
+                f"Sua mensalidade de R${mensalidade.valor:.0f} foi aprovada pela IA.\n\n"
+                f"Obrigado! 💪",
+                parse_mode='Markdown'
+            )
+
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"🤖 *Pagamento aprovado automaticamente!*\n\n"
+                    f"👤 Cliente: {cliente.nome}\n"
+                    f"💰 Valor: R${mensalidade.valor:.0f}\n"
+                    f"🔑 ID Mensalidade: {mensalidade.id}"
+                ),
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ *Não consegui validar o comprovante automaticamente.*\n\n"
+                "Seu comprovante foi encaminhado para o administrador.",
+                parse_mode='Markdown'
+            )
+
+            await context.bot.send_photo(
+                chat_id=ADMIN_ID,
+                photo=photo.file_id,
+                caption=(
+                    f"📋 *Comprovante para revisão manual*\n\n"
+                    f"👤 Cliente: {cliente.nome}\n"
+                    f"📅 Vencimento: {mensalidade.data_vencimento}\n"
+                    f"💰 Valor: R${mensalidade.valor:.0f}\n"
+                    f"🔑 ID Mensalidade: {mensalidade.id}\n\n"
+                    f"Para aprovar: `/aprovar {mensalidade.id}`\n"
+                    f"Para rejeitar: `/rejeitar {mensalidade.id}`"
+                ),
+                parse_mode='Markdown'
+            )
     finally:
         db.close()
 
-# ================================
-# VALIDAÇÃO COM CLAUDE AI
-# ================================
 async def validar_comprovante_ia(image_base64: str, valor_esperado: float) -> bool:
     try:
         async with httpx.AsyncClient() as client:
@@ -145,7 +168,7 @@ async def validar_comprovante_ia(image_base64: str, valor_esperado: float) -> bo
                                 },
                                 {
                                     "type": "text",
-                                    "text": f"Esta imagem é um comprovante de pagamento válido no valor de R${valor_esperado:.0f}? Responda apenas SIM ou NAO."
+                                    "text":  f"Esta imagem é um comprovante de pagamento ou transferência bancária? Responda apenas SIM ou NAO, sem acento."
                                 }
                             ]
                         }
@@ -154,17 +177,15 @@ async def validar_comprovante_ia(image_base64: str, valor_esperado: float) -> bo
                 timeout=30.0
             )
             result = response.json()
+            logger.info(f"Resposta completa da IA: {result}")
             resposta = result['content'][0]['text'].strip().upper()
+            logger.info(f"Resposta da IA: {resposta}")
             return 'SIM' in resposta
     except Exception as e:
         logger.error(f"Erro na validação IA: {e}")
         return False
 
-# ================================
-# COMANDO /aprovar (admin)
-# ================================
 async def aprovar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Comando /aprovar recebido de {update.effective_user.id}, ADMIN_ID={ADMIN_ID}")
     if not context.args:
         await update.message.reply_text("Use: /aprovar <id_mensalidade>")
         return
@@ -201,9 +222,6 @@ async def aprovar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-# ================================
-# COMANDO /rejeitar (admin)
-# ================================
 async def rejeitar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /rejeitar <id_mensalidade>")
@@ -236,9 +254,6 @@ async def rejeitar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-# ================================
-# COMANDO /ajuda
-# ================================
 async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📖 *Como usar o bot:*\n\n"
@@ -252,9 +267,6 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# ================================
-# INICIAR O BOT
-# ================================
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
