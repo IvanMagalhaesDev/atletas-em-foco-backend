@@ -8,22 +8,38 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 @router.get("/resumo")
 def resumo_dashboard(db: Session = Depends(get_db)):
+    from datetime import date
+    mes_atual = date.today().strftime("%m/%Y")
+
     total_clientes = db.query(Cliente).filter(Cliente.ativo == True).count()
-    pagos     = db.query(Mensalidade).filter(Mensalidade.status == "pago").count()
-    pendentes = db.query(Mensalidade).filter(Mensalidade.status == "pendente").count()
-    atrasados = db.query(Mensalidade).filter(Mensalidade.status == "atrasado").count()
+    
+    pagos = db.query(Mensalidade).filter(
+        Mensalidade.status == "pago",
+        Mensalidade.mes_referencia == mes_atual
+    ).count()
+    
+    pendentes = db.query(Mensalidade).filter(
+        Mensalidade.status == "pendente",
+        Mensalidade.mes_referencia == mes_atual
+    ).count()
+    
+    atrasados = db.query(Mensalidade).filter(
+        Mensalidade.status == "atrasado",
+        Mensalidade.mes_referencia == mes_atual
+    ).count()
 
     receita = db.query(Mensalidade).filter(
-        Mensalidade.status == "pago"
+        Mensalidade.status == "pago",
+        Mensalidade.mes_referencia == mes_atual
     ).all()
     total_receita = sum(m.valor for m in receita)
 
     return {
         "total_clientes": total_clientes,
-        "pagos":     pagos,
+        "pagos": pagos,
         "pendentes": pendentes,
         "atrasados": atrasados,
-        "receita":   total_receita
+        "receita": total_receita
     }
 
 @router.get("/grafico")
